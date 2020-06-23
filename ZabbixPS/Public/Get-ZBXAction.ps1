@@ -45,6 +45,26 @@
 
     Return only actions that use the given triggers in action conditions.
 
+    .PARAMETER MediaTypeId
+
+    Return only actions that use the given media types to send messages.
+
+    .PARAMETER UserGroupId
+
+    Return only actions that are configured to send messages to the given user groups.
+
+    .PARAMETER UserID
+
+    Return only actions that are configured to send messages to the given users.
+
+    .PARAMETER ScriptId
+
+    Return only actions that are configured to run the given scripts.
+
+    .PARAMETER ActionName
+
+    Return only actions that have a specific name. Wildcard filter.
+
     .INPUTS
 
     None, does not support pipeline.
@@ -63,7 +83,7 @@
 
     Returns Zabbix Action with the Action name of 'myAction'.
 
-    Get-ZBXAction -Name 'myAction'
+    Get-ZBXAction -ActionName 'myAction'
 
     .LINK
 
@@ -96,20 +116,48 @@
         $Session,
 
         [Parameter()]
+        [Alias('actionids')]
         [string[]]
         $ActionId,
 
         [Parameter()]
+        [Alias('grouids')]
         [string[]]
         $GroupId,
 
         [Parameter()]
+        [Alias('hostids')]
         [string[]]
         $HostId,
 
         [Parameter()]
+        [Alias('triggerids')]
         [string[]]
-        $TriggerId
+        $TriggerId,
+
+        [Parameter()]
+        [Alias('mediatypeids')]
+        [string[]]
+        $MediaTypeId,
+
+        [Parameter()]
+        [Alias('usrgrpids')]
+        [string[]]
+        $UserGroupId,
+
+        [Parameter()]
+        [Alias('userids')]
+        [string[]]
+        $UserID,
+
+        [Parameter()]
+        [Alias('scriptids')]
+        [string[]]
+        $ScriptId,
+
+        [Parameter()]
+        [string]
+        $ActionName
     )
 
     begin
@@ -126,38 +174,32 @@
                 $ApiVersion = $currentSession.ApiVersion
             }
         }
+
+        $NonAPIParameters = @('Uri','Credential','Proxy','ProxyCredential','Session','ActionName')
+        $CommonParameters = $(([System.Management.Automation.PSCmdlet]::CommonParameters,[System.Management.Automation.PSCmdlet]::OptionalCommonParameters) | ForEach-Object {$PSItem})
     }
 
     process
     {
-        $body = @{
-            method  = 'action.get'
-            jsonrpc = $ApiVersion
-            id      = 1
 
-            params  = @{
-                output                   = 'extend'
-                selectOperations         = 'extend'
-                selectRecoveryOperations = 'extend'
-                selectFilter             = 'extend'
+        $params  = @{
+            output                   = 'extend'
+            selectOperations         = 'extend'
+            selectRecoveryOperations = 'extend'
+            selectFilter             = 'extend'
+        }
+
+        #Dynamically adds any bound parameters that are used for the conditions
+        foreach ($Parameter in $PSBoundParameters.GetEnumerator()){
+            if ($Parameter.key -notin $NonAPIParameters -and $Parameter.key -notin $CommonParameters) {
+                #uses the hardcoded Alias of the parameter as the API friendly param
+                $apiParam = $MyInvocation.MyCommand.Parameters[$Parameter.key].Aliases[0]
+                $params[$apiParam] = $Parameter.Value
             }
         }
-        if ($ActionId)
-        {
-            $body.params.actionids = $ActionId
-        }
-        if ($GroupId)
-        {
-            $body.params.groupids = $GroupId
-        }
-        if ($HostId)
-        {
-            $body.params.hostids = $HostId
-        }
-        if ($TriggerId)
-        {
-            $body.params.triggerids = $TriggerId
-        }
+
+        $body = New-ZBXRestBody -Method 'action.get' -API $ApiVersion -Params $params
+
         $invokeZabbixRestMethodSplat = @{
             Body        = $body
             Uri         = $Uri
@@ -173,10 +215,10 @@
                 $invokeZabbixRestMethodSplat.ProxyCredential = $ProxyCredential
             }
         }
-        return Invoke-ZBXRestMethod @invokeZabbixRestMethodSplat
-    }
-
-    end
-    {
+        if ($ActionName) {
+            Invoke-ZBXRestMethod @invokeZabbixRestMethodSplat | Where-Object {$PSItem.Name -like "*$ActionName*"}
+        } Else {
+            Invoke-ZBXRestMethod @invokeZabbixRestMethodSplat
+        }
     }
 }
